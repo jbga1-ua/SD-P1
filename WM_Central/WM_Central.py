@@ -3,7 +3,7 @@ servidor concurrente con hilos (Threads), quedando a la escucha en un puerto
 para aceptar las conexiones simultáneas de múltiples estaciones.'''
 import socket 
 import threading
-
+import sqlite3
 
 HEADER = 64 #indica la longitud del mensaje
 PORT = 5050
@@ -26,8 +26,20 @@ def handle_client(conn, addr):
         campos = msg.split("#")
         #lo que recibe el servidor tiene tres parametros, el primero es "REGISTRO" y los dso siguientes existen
         if len(campos) ==3 and campos[0]=="REGISTRO" and campos[1] and campos[2]:
+            try:
+                with lock:
+
+                    cursor.execute("""INSERT OR REPLACE INTO estacion (id,ubicacion,estado) VALUES (?, ?, ?)""", (campos[1], campos[2],"Disponible"))
+                    conexion.commit()
+                send("STATUS#OK#Estacion registrada correctamente",conn)
+
+            except sqlite3.Error as e:
+                print(e)
+                send("STATUS#ERROR",conn)
+
             print(f"{campos[1]}#{campos[2]}")
-            send("STATUS#OK#Estacion registrada correctamente",conn)
+            
+            
         else:
             send("STATUS#ERROR",conn)
 
@@ -59,9 +71,42 @@ def start():
 ######################### MAIN ##########################
 
 
+conexion = sqlite3.connect("central.db", check_same_thread=False)
+cursor = conexion.cursor()
+
+cursor.execute("""CREATE TABLE IF NOT EXISTS estacion( 
+    id TEXT primary key,
+    ubicacion TEXT,
+    estado TEXT DEFAULT 'Desconectada'
+) """)
+
+cursor.execute("""CREATE TABLE IF NOT EXISTS operario(
+    id TEXT primary key,
+    nombre TEXT
+)""")
+
+
+conexion.commit()
+
+cursor.execute("UPDATE estacion set estado = 'Desconectada'")
+conexion.commit()
+
+cursor.execute("Select id, ubicacion, estado FROM estacion")
+estaciones=cursor.fetchall()
+
+for estacion in estaciones:
+    print(f"{estacion[0]} | {estacion[2]} | {estacion[1]}")
+
+lock = threading.Lock()
+
+
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server.bind(ADDR)
 
 print("[STARTING] Servidor inicializándose...")
 
 start()
+
+
+
+
